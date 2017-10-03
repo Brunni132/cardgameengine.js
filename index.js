@@ -2,7 +2,8 @@ const uuidv4 = require('uuid/v4');
 const DEFAULT_DISPLAY_TIMEOUT = 3;
 
 // A command is like a state (except that you may have more than one state running in parallel, typically one per connected client).
-// Commands added last are processed last, which means that even if an user has not yet completed a given state, you can still advance in the game.
+// Commands added last are processed last, which means that even if an user has not yet completed a given state, you can still advance in the game and stack new commands.
+// Also, commands are always accompanied with the logs written for a given player. Thus, this.pendingLogs should always be outputted to the user.
 class Command {
 	constructor() {
 		this.commandList = null;
@@ -14,10 +15,13 @@ class Command {
 			this.rejectCb = reject;
 		});
 	}
-	addToList(commandList) {
+	// Used from GamePrivate only. Adds to its list of processed commands and snapshots the logs which will be returned with it.
+	addToList(commandList, pendingLogs) {
 		commandList.push(this);
 		this.commandList = commandList;
+		this.pendingLogs = pendingLogs;
 	}
+	// Used from GamePrivate only
 	removeFromList() {
 		if (!this.commandList) {
 			return console.error('Command list null, can\'t remove myself');
@@ -28,6 +32,7 @@ class Command {
 		}
 		this.commandList.splice(found, 1);
 	}
+	// Call this to resume the game execution
 	resolve(result) {
 		this.resolveCb(result);
 		this.removeFromList();
@@ -36,31 +41,15 @@ class Command {
 		this.rejectCb(error);
 		this.removeFromList();
 	}
-	// Commands return true if they are processed for the given player
-	// That doesn't mean they have necessarily sent something to the user (gamePrivate.render*) but that no further command should process the current player.
+	// You need to override this. Return true if the command can processed for the given player.
+	// That doesn't mean you necessarily sent something to the user (gamePrivate.render*) but that no further command should process the current player.
 	tryProcess(req, res, game, playerNo) {
 		console.error('Unimplemented tryProcess');
 		return false;
 	}
 }
 
-class FlushLogsCommand extends Command {
-	constructor(playerNo, text, timeout) {
-		super();
-		this.playerNo = playerNo;
-		this.text = text;
-		this.timeout = timeout;
-	}
-
-	tryProcess(req, res, gamePrivate, playerNo) {
-		if (playerNo !== this.playerNo) return false;
-
-		gamePrivate.renderTemplate(res, this.playerNo, 'flushLogs', { text: this.text, timeout: this.timeout, pendingLogs: this.pendingLogs });
-		this.resolve();
-		return true;
-	}
-}
-
+// This shows a message and requires the user to validate it with a button (unlike the TimeoutCommand) before resuming the game.
 class NoticeCommand extends Command {
 	constructor(playerNo, text) {
 		super();
@@ -84,6 +73,8 @@ class NoticeCommand extends Command {
 	}
 }
 
+// Asks the user for input, with support for an optional validation callback.
+// This state is blocking until an answer is returned and validated.
 class RequestCommand extends Command {
 	constructor(playerNo, question, validateCb) {
 		super();
@@ -129,7 +120,25 @@ class RequestCommand extends Command {
 	}
 }
 
+// Shows a message to the user for a given amount of time.
+// Unlike others, this state is not blocking, it resumes the execution straight to the next.
+class TimeoutCommand extends Command {
+	constructor(playerNo, text, timeout) {
+		super();
+		this.playerNo = playerNo;
+		this.text = text;
+		this.timeout = timeout;
+	}
 
+	tryProcess(req, res, gamePrivate, playerNo) {
+		if (playerNo !== this.playerNo) return false;
+		gamePrivate.renderTemplate(res, this.playerNo, 'flushLogs', { text: this.text, timeout: this.timeout, pendingLogs: this.pendingLogs });
+		this.resolve();
+		return true;
+	}
+}
+
+// Private part of GamePublic. Internal methods.
 class GamePrivate {
 	constructor(gamePublic) {
 		this.playerData = [];
@@ -140,41 +149,31 @@ class GamePrivate {
 		this.public = gamePublic;
 		this.processReqTimer = [];
 	}
-
+	// Adds a command for a given player. Snapshots logs until now and clears them. The command will output them.
 	addCommand(playerNo, newCommand) {
-		newCommand.addToList(this.commands);
-		newCommand.pendingLogs = this.playerPendingLogs[playerNo];
+		newCommand.addToList(this.commands, this.playerPendingLogs[playerNo]);
 		this.playerPendingLogs[playerNo] = '';
 		return newCommand.promise;
 	}
-
+	// Appends to the pending logs for a given player.
 	logToPlayer(playerNo, message) {
 		this.playerPendingLogs[playerNo] += message + '\n';
 	}
-
+	// Processes an express request
 	processReq(req, res) {
-		const playerNo = this.translatePlayerId(req);
+		const playerNo = this.translatePlayerNo(req);
 		if (playerNo >= 0) {
 			// This will switch to false if any command sends a response to the client
 			// Else you may want to periodically call processReqForAnyPlayer
 			this.playerWaiting[playerNo] = true;
 			// An answer wasn't given to the player, try later
 			if (!this.processReqForPlayer(req, res, playerNo) || this.playerWaiting[playerNo]) {
-				this.renderWait(res, playerNo);
-				// const timer = () => {
-				// 	this.processReqForPlayer(req, res);
-				// 	if (this.playerWaiting[playerNo]) {
-				// 		this.processReqTimer[playerNo] = setTimeout(timer, 20);
-				// 	}
-				// };
-				// clearTimeout(this.processReqTimer[playerNo]);
-				// this.processReqTimer[playerNo] = setTimeout(timer, 20);
+				this.renderTemplate(res, playerNo, 'pleaseWait', {});
 			}
 			return;
 		}
 		res.send('Unknown player');
 	}
-
 	// You can call this is you just want to see if there's anything in the command buffer for a player
 	processReqForPlayer(req, res, playerNo) {
 		let processed = false;
@@ -186,21 +185,12 @@ class GamePrivate {
 		});
 		return processed;
 	}
-
-	renderMessage(res, playerNo, message) {
-		res.send(message);
-		this.playerWaiting[playerNo] = false;
-	}
-
-	renderWait(res, playerNo) {
-		return this.renderTemplate(res, playerNo, 'pleaseWait', {});
-	}
-
+	// Renders a pug template to the user output. Required to be done at some point in a processReq.
 	renderTemplate(res, playerNo, template, params) {
 		res.render(template, params);
 		this.playerWaiting[playerNo] = false;
 	}
-
+	// TODO
 	setupPlayers(opts) {
 		if (!opts || !(opts.defaults instanceof Array)) {
 			throw new Error('default player options required');
@@ -214,20 +204,20 @@ class GamePrivate {
 			resolve();
 		});
 	}
-
+	// Adds a NoticeCommand for the user
 	showNoticeToPlayer(playerNo, text) {
 		return this.addCommand(playerNo, new NoticeCommand(playerNo, text));
 	}
-
+	// Adds a TimeoutCommand for the user
 	showPendingLogsToPlayer(playerNo, text, timeout) {
-		return this.addCommand(playerNo, new FlushLogsCommand(playerNo, text, timeout || DEFAULT_DISPLAY_TIMEOUT));
+		return this.addCommand(playerNo, new TimeoutCommand(playerNo, text, timeout || DEFAULT_DISPLAY_TIMEOUT));
 	}
-
+	// Adds a RequestCommand for the user
 	requestToPlayer(playerNo, question, validateCb) {
 		return this.addCommand(playerNo, new RequestCommand(playerNo, question, validateCb));
 	}
-
-	translatePlayerId(req) {
+	// Returns the player index for this express request
+	translatePlayerNo(req) {
 		const pid = req.param('playerId');
 		if (pid) {
 			const found = this.registeredPlayerIdList.indexOf(pid);
@@ -239,44 +229,46 @@ class GamePrivate {
 	}
 }
 
+// Allows for various operations within the game. Pay attention to the async methods, which you need to use with await.
 class GamePublic {
 	constructor() {
 		this.private = new GamePrivate(this);
 	}
 
+	// Player data, freely manipulable
 	get player() {
 		return this.private.playerData;
 	}
 
+	// Logging gets outputted to the player in an asynchronous manner
 	logToEveryone(message) {
 		for (let i = 0; i < this.player.length; i += 1) {
 			this.private.logToPlayer(i, message);
 		}
 	}
-
 	logToPlayer(playerNo, message) {
 		return this.private.logToPlayer(playerNo, message);
 	}
 
+	// TODO
 	async setupPlayers(opts) {
 		return await this.private.setupPlayers(opts);
 	}
 
+	// Requests input from the player (and blocks him until the call returns)
 	async requestToEveryone(question, validateCb) {
 		return await Promise.all(
 			this.player.map((p, playerNo) => this.private.requestToPlayer(playerNo, question, validateCb)));
 	}
-
 	async requestToPlayer(playerNo, question, validateCb) {
 		return await this.private.requestToPlayer(playerNo, question, validateCb);
 	}
 
-	// Forces him to press on a "next" button
+	// Shows a notice to the player and returns when he presses the Next button.
 	async showNoticeToEveryone(text) {
 		return await Promise.all(
 			this.player.map((p, playerNo) => this.private.showNoticeToPlayer(playerNo, text)));
 	}
-
 	async showNoticeToPlayer(playerNo, text) {
 		return await this.private.showNoticeToPlayer(playerNo, text);
 	}
@@ -286,7 +278,6 @@ class GamePublic {
 		return await Promise.all(
 			this.player.map((p, playerNo) => this.private.showPendingLogsToPlayer(playerNo, text, timeout)));
 	}
-
 	async showPendingLogsToPlayer(playerNo, text, timeout) {
 		return await this.private.showPendingLogsToPlayer(playerNo, text, timeout);
 	}
