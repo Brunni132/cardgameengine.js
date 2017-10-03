@@ -100,18 +100,17 @@ class RequestCommand extends Command {
 				ok: () => {
 					// Note that we don't answer to the request, the client is still waiting
 					this.resolve(responseObj);
+					return false;
 				},
 				reject: (reason) => {
-					console.log('Rejected', reason);
 					this.serveQuestion(req, res, gamePrivate, reason);
+					return true;
 				}
 			}
 			if (this.validateCb) {
-				this.validateCb(responseObj);
-			} else {
-				responseObj.ok();
+				return this.validateCb(responseObj);
 			}
-			return true;
+			return responseObj.ok();
 		}
 
 		// … or not and we serve the form
@@ -287,7 +286,7 @@ class GamePublic {
 const express = require('express');
 const app = express();
 const game = new GamePublic();
-const janken = require('./jankenSimple');
+const janken = require('./janken');
 
 app.set('view engine', 'pug');
 
