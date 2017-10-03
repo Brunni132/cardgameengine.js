@@ -1,0 +1,25 @@
+{
+  "name": "cardgameengine.js",
+  "version": "1.0.0",
+  "description": "Simple card game engine for JS, allowing to quickly prototype new kind of games",
+  "main": "index.js",
+  "dependencies": {
+    "express": "^4.16.1",
+    "pug": "^2.0.0-rc.4",
+    "uuid": "^3.1.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Brunni132/cardgameengine.js.git"
+  },
+  "author": "Brunni132",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Brunni132/cardgameengine.js/issues"
+  },
+  "homepage": "https://github.com/Brunni132/cardgameengine.js#readme"
+}
