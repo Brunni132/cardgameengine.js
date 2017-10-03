@@ -1,0 +1,9 @@
+html
+	head
+		title Notice
+	body
+		h1= text
+		pre= pendingLogs
+		form(method='GET')
+			input(style='display:none;', type='text', name='ackId', value=ackId)
+			button(type='submit', autofocus) Next

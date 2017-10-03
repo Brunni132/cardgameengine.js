@@ -1,0 +1,12 @@
+html
+	head
+		title Question
+	body
+		h1= question
+		pre= pendingLogs
+		p(style='color:#f00')= error
+		form(method='GET')
+			input(style='display:none;', type='text', name='ackId', value=ackId)
+			label(for='name') Answer:
+			input#answer.form-control(type='text', placeholder='answer' name='answer')
+			button.btn.btn-primary(type='submit', autofocus) Send
