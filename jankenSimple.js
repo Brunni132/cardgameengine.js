@@ -10,9 +10,7 @@ const randomInt = (min, max) => {
 
 const winnerOfRPS = (p1Vote, p2Vote) => {
 	if (p1Vote === p2Vote) return -1;
-	if (p1Vote === 'P' && p2Vote === 'R' ||
-		p1Vote === 'R' && p2Vote === 'S' ||
-		p1Vote === 'S' && p2Vote === 'P') return 0;
+	if (p1Vote === 'P' && p2Vote === 'R' || p1Vote === 'R' && p2Vote === 'S' || p1Vote === 'S' && p2Vote === 'P') return 0;
 	return 1;
 };
 
