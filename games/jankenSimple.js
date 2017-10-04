@@ -6,16 +6,6 @@
 // Each game can have multiple instances and declares how many players it needs to start
 // Configuration/story screens would be one-player games
 // When someone leaves the game, the other is not notified, he'll just go back to the /home app by himself
-async function inParallel(...funs) {
-	return await Promise.all(funs);
-}
-
-const randomInt = (min, max) => {
-  min = Math.ceil(min);
-  max = Math.floor(max);
-  return Math.floor(Math.random() * (max - min)) + min;
-};
-
 const winnerOfRPS = (p1Vote, p2Vote) => {
 	if (p1Vote === p2Vote) return -1;
 	if (p1Vote === 'P' && p2Vote === 'R' || p1Vote === 'R' && p2Vote === 'S' || p1Vote === 'S' && p2Vote === 'P') return 0;
@@ -23,10 +13,6 @@ const winnerOfRPS = (p1Vote, p2Vote) => {
 };
 
 async function GameInstance(game) {
-	await game.setupPlayers({
-		defaults: [ {}, {} ]
-	});
-
 	while (true) {
 		let weHaveAWinner = false;
 		for (let round = 1; round <= 3 && !weHaveAWinner; round += 1) {

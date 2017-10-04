@@ -1,4 +1,5 @@
-const coinToss = () => randomInt(0, 2) === 0;
+const inParallel = require('./helpers').inParallel;
+const randomInt = require('./helpers').randomInt;
 
 // Can be shown to the user with .desc
 const generateRPSHand = (game) => {
@@ -18,18 +19,6 @@ const generateRPSHand = (game) => {
 	return result;
 };
 
-async function inParallel(...funs) {
-	return await Promise.all(funs);
-}
-
-const random = (min, max) => Math.random() * (max - min) + min;
-
-const randomInt = (min, max) => {
-  min = Math.ceil(min);
-  max = Math.floor(max);
-  return Math.floor(Math.random() * (max - min)) + min;
-};
-
 const winnerOfRPS = (p1Vote, p2Vote) => {
 	if (p1Vote === 'P' && p2Vote === 'P') return -1;
 	if (p1Vote === 'P' && p2Vote === 'R') return 0;
@@ -44,13 +33,6 @@ const winnerOfRPS = (p1Vote, p2Vote) => {
 };
 
 async function GameInstance(game) {
-	await game.setupPlayers({
-		defaults: [
-			{ chips: 100, deck: ['A', 'B'] },
-			{ chips: 150, deck: ['A', 'C'] }
-		]
-	});
-
 	const player = game.player;
 	const p1 = player[0], p2 = player[1];
 
@@ -128,4 +110,7 @@ async function GameInstance(game) {
 	await game.showNoticeToEveryone('Game finished');
 }
 
-module.exports = GameInstance;
+module.exports = {
+	makeInstance: GameInstance,
+	numPlayers: 2,
+};
