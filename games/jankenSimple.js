@@ -55,4 +55,7 @@ async function GameInstance(game) {
 	}
 }
 
-module.exports = GameInstance;
+module.exports = {
+	makeInstance: GameInstance,
+	numPlayers: 2,
+};

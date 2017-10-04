@@ -1,6 +1,12 @@
 const uuidv4 = require('uuid/v4');
 const DEFAULT_DISPLAY_TIMEOUT = 3;
 
+class PlayerData {
+	constructor(playerName) {
+		this.playerName = playerName;
+	}
+}
+
 // A command is like a state (except that you may have more than one state running in parallel, typically one per connected client).
 // Commands added last are processed last, which means that even if an user has not yet completed a given state, you can still advance in the game and stack new commands.
 // Also, commands are always accompanied with the logs written for a given player. Thus, this.pendingLogs should always be outputted to the user.
@@ -139,20 +145,37 @@ class TimeoutCommand extends Command {
 
 // Private part of GamePublic. Internal methods.
 class GamePrivate {
-	constructor(gamePublic) {
+	constructor(gamePublic, numPlayers) {
 		this.playerData = [];
-		this.registeredPlayerIdList = ['1', '2'];
+		this.playingPlayers = [];
+		this.allPlayersJoinedPromise = new Promise((resolve, reject) => {
+			this.allPlayersJoinedResolved = resolve;
+		});
 		this.playerWaiting = [];
 		this.playerPendingLogs = [];
 		this.commands = [];
 		this.public = gamePublic;
 		this.processReqTimer = [];
+		this.numPlayers = numPlayers;
 	}
 	// Adds a command for a given player. Snapshots logs until now and clears them. The command will output them.
 	addCommand(playerNo, newCommand) {
 		newCommand.addToList(this.commands, this.playerPendingLogs[playerNo]);
 		this.playerPendingLogs[playerNo] = '';
 		return newCommand.promise;
+	}
+	addPlayer(playerName) {
+		if (this.findPlayer(playerName)) throw new Error(`Player ${playerName} already part of this game!`);
+		if (this.playingPlayers.length >= this.numPlayers) throw new Error(`This game is already full! ${playerName} cannot join.`);
+		this.playingPlayers.push({ playerName: playerName });
+		if (this.playingPlayers.length === this.numPlayers) {
+			this.allPlayersJoinedResolved();
+		}
+	}
+	// >= 0 if part of the game (player ID)
+	findPlayer(playerName) {
+		const found = this.playingPlayers.find(p => p.playerName === playerName);
+		return this.playingPlayers.indexOf(found);
 	}
 	// Appends to the pending logs for a given player.
 	logToPlayer(playerNo, message) {
@@ -189,20 +212,6 @@ class GamePrivate {
 		res.render(template, params);
 		this.playerWaiting[playerNo] = false;
 	}
-	// TODO
-	setupPlayers(opts) {
-		if (!opts || !(opts.defaults instanceof Array)) {
-			throw new Error('default player options required');
-		}
-		return new Promise((resolve, reject) => {
-			this.playerData = opts.defaults;
-			this.playerData.forEach((p, i) => {
-				this.playerPendingLogs[i] = '';
-			});
-			// Immediate response (hack)
-			resolve();
-		});
-	}
 	// Adds a NoticeCommand for the user
 	showNoticeToPlayer(playerNo, text) {
 		return this.addCommand(playerNo, new NoticeCommand(playerNo, text));
@@ -217,21 +226,21 @@ class GamePrivate {
 	}
 	// Returns the player index for this express request
 	translatePlayerNo(req) {
-		const pid = req.param('playerId');
-		if (pid) {
-			const found = this.registeredPlayerIdList.indexOf(pid);
-			if (found >= 0) {
-				return found;
-			}
+		const playerName = req.param('playerId');
+		if (playerName) {
+			return this.findPlayer(playerName);
 		}
 		return -1;
+	}
+	waitForPlayers() {
+		return this.allPlayersJoinedPromise;
 	}
 }
 
 // Allows for various operations within the game. Pay attention to the async methods, which you need to use with await.
 class GamePublic {
-	constructor() {
-		this.private = new GamePrivate(this);
+	constructor(numPlayers) {
+		this.private = new GamePrivate(this, numPlayers);
 	}
 
 	// Player data, freely manipulable
@@ -247,11 +256,6 @@ class GamePublic {
 	}
 	logToPlayer(playerNo, message) {
 		return this.private.logToPlayer(playerNo, message);
-	}
-
-	// TODO
-	async setupPlayers(opts) {
-		return await this.private.setupPlayers(opts);
 	}
 
 	// Requests input from the player (and blocks him until the call returns)
@@ -280,20 +284,99 @@ class GamePublic {
 	async showPendingLogsToPlayer(playerNo, text, timeout) {
 		return await this.private.showPendingLogsToPlayer(playerNo, text, timeout);
 	}
+
+	async waitForPlayers() {
+		return await this.private.waitForPlayers();
+	}
+}
+
+class GameClass {
+	constructor(gameName, gameClass) {
+		this.gameClass = gameClass;
+		this.gameName = gameName;
+		this.gameInstances = [];
+	}
+
+	createInstance(firstPlayerName) {
+		// Debug check
+		if (this.findPlayer(firstPlayerName)) {
+			throw new Error(`Player ${name} is already part of game ${this.gameName}`);
+		}
+		// Create a container for this instance, with the current player
+		const inst = new GamePublic(this.gameClass.numPlayers);
+		inst.addPlayer(firstPlayerName);
+		this.gameInstances.push(inst);
+		// Start the game
+		this.gameClass.makeInstance(inst);
+	}
+
+	// Returns either null (not part of the game) or [instanceIndex, playerIndex]
+	findPlayer(playerName) {
+		for (let i = 0; i < this.gameInstances; i += 1) {
+			const playerIndex = this.gameInstances[i].findPlayer(playerName);
+			if (playerIndex >= 0) return [i, playerIndex];
+		}
+		return null;
+	}
+}
+
+class EnginePrivate {
+	constructor(enginePublic) {
+		this.public = enginePublic;
+
+		this.gameList = {};
+		this.playerList = {
+			arnaud: {
+				properties: {
+					chips: 100,
+				}
+			},
+			florian: {
+				properties: {
+					chips: 150,
+				}
+			}
+		};
+		this.playerList.forEach(p => {
+			p.currentGame = null;
+		});
+	}
+
+	// The game must have been preloaded (loadGameClass)
+	createGameInstance(gameName) {
+		// const gameClass = loadGameClassIfNeeded(gameName);
+	}
+
+	// After loading the game, you need to create instances
+	loadGameClassIfNeeded(gameName) {
+		if (this.gameList[gameClass]) return this.gameList[gameClass];
+		try {
+			const gameClass = require(`games/#{gameName}`);
+			return this.gameList[gameClass] = new GameClass(gameName, gameClass);
+		} catch (e) {
+			console.error(`Failed to load the game ${gameName}`, e);
+			return null;
+		}
+	}
+
+}
+
+class EnginePublic {
+	constructor() {
+		this.private = new GamePrivate(this);
+	}
+
 }
 
 // -------------------------------------------------
 const express = require('express');
 const app = express();
-const game = new GamePublic();
-const janken = require('./janken');
 
 app.set('view engine', 'pug');
 
-app.get('/player/:playerId', function (req, res) {
-	game.private.processReq(req, res);
+app.get('/player/:playerId/:game', function (req, res) {
+	// game.private.processReq(req, res);
 });
 
 app.listen(3000, function () {
-	janken(game);
 });
