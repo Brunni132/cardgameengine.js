@@ -21,16 +21,14 @@ async function GameInstance(game) {
 		let weHaveAWinner = false;
 		for (let round = 1; round <= 3 && !weHaveAWinner; round += 1) {
 			const plays = [];
-			const verifyPlay = (response) => {
+			await game.requestToEveryone('Your play? (r, p os s)', (response) => {
 				const played = response.text.toUpperCase();
 				if (['R', 'P', 'S'].indexOf(played) >= 0) {
 					plays[response.playerNo] = played;
 					return response.ok();
 				}
 				return response.reject('Unavailable choice');
-			};
-
-			await game.requestToEveryone('Your play? (r, p os s)', verifyPlay);
+			});
 
 			const winner = winnerOfRPS(plays[0], plays[1]);
 			game.logToEveryone(`P1 played ${plays[0]}, P2 played ${plays[1]}`);
