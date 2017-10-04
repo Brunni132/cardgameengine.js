@@ -1,3 +1,11 @@
+// Refactoring ideas:
+// Commands always have the player ID
+// There are separate pipes (command list) for each player
+// We can register a callback when the pipe is empty for a given player
+// Players have a state (they are playing one game at once, we keep a link to the instance) that is persisted in DB
+// Each game can have multiple instances and declares how many players it needs to start
+// Configuration/story screens would be one-player games
+// When someone leaves the game, the other is not notified, he'll just go back to the /home app by himself
 async function inParallel(...funs) {
 	return await Promise.all(funs);
 }
