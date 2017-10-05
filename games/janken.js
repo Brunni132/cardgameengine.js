@@ -36,8 +36,16 @@ async function GameInstance(game) {
 	const player = game.player;
 	const p1 = player[0], p2 = player[1];
 
-	game.logToPlayer(0, `Hello P1! You have ${JSON.stringify(p1)}`);
-	game.logToPlayer(1, `Hello P2! You have ${JSON.stringify(p2)}`);
+	game.logToPlayer(0, `Hello P1! You have ${p1.chips}`);
+	game.logToPlayer(1, `Hello P2! You have ${p2.chips}`);
+	if (!p1.chips) {
+		p1.chips = 150;
+		game.showNoticeToPlayer(0, `You had no chips, so gave you ${p1.chips} ;)`, { timeout: 3 });
+	}
+	if (!p2.chips) {
+		p2.chips = 150;
+		game.showNoticeToPlayer(1, `You had no chips, so gave you ${p2.chips} ;)`, { timeout: 3 });
+	}
 
 	while (p1.chips > 0 && p2.chips > 0) {
 		const bets = [];
@@ -56,8 +64,8 @@ async function GameInstance(game) {
 		game.logToPlayer(0, `Your hand: ${p1.hand.desc()}`);
 		game.logToPlayer(1, `Your hand: ${p2.hand.desc()}`);
 		await inParallel(
-			game.requestToPlayer(0, `Bet? [1..${p1.chips}]`, { verifyCb: verifyBet }),
-			game.requestToPlayer(1, `Bet? [1..${p2.chips}]`, { verifyCb: verifyBet })
+			game.requestToPlayer(0, `Bet? [1..${p1.chips}]`, { validateCb: verifyBet }),
+			game.requestToPlayer(1, `Bet? [1..${p2.chips}]`, { validateCb: verifyBet })
 		);
 
 		let weHaveAWinner = false;
@@ -76,8 +84,8 @@ async function GameInstance(game) {
 			};
 
 			await inParallel(
-				game.requestToPlayer(0, `Play? ${p1.hand.desc()}`, { verifyCb: verifyPlay }),
-				game.requestToPlayer(1, `Play? ${p2.hand.desc()}`, { verifyCb: verifyPlay })
+				game.requestToPlayer(0, `Play? ${p1.hand.desc()}`, { validateCb: verifyPlay }),
+				game.requestToPlayer(1, `Play? ${p2.hand.desc()}`, { validateCb: verifyPlay })
 			);
 
 			game.logToEveryone(`P1 played ${plays[0]}, P2 played ${plays[1]}`);

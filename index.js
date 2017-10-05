@@ -261,7 +261,7 @@ class GamePublic {
 		return await Promise.all(
 			this.player.map((p, playerNo) => this.private.requestToPlayer(playerNo, question, options)));
 	}
-	async requestToPlayer(playerNo, question, validateCb) {
+	async requestToPlayer(playerNo, question, options) {
 		return await this.private.requestToPlayer(playerNo, question, options);
 	}
 
@@ -343,7 +343,7 @@ class PlayerState {
 	constructor(playerName) {
 		this.currentGame = null;
 		this.playerName = playerName;
-		this.userData = null;
+		this.userData = {};
 	}
 	// Fetch user data from disk. Throws an exception in case the file doesn't exist.
 	fetch() {
@@ -395,12 +395,20 @@ class Engine {
 			return false;
 		}
 	}
+	playerNameValid(playerName) {
+		return /^[a-z][0-9a-z-_]*$/.test(playerName);
+	}
 	// Process an Express.js request, routing it to the right game
 	processRequest(req, res, gameName, playerName) {
 		const gameModule = this.loadGameModuleIfNeeded(gameName);
 		playerName = playerName.toLowerCase();
+		if (!this.playerNameValid(playerName)) {
+			return res.render('error', { message: `Invalid username ${playerName}` });
+		}
 		if (!this.playerExists(playerName)) {
-			return res.render('error', { message: `No player ${playerName}` });
+			// Auto-register the user if he doesn't exist
+			this.playerStates[playerName] = new PlayerState(playerName);
+			return res.render('error', { message: `Registered your account, ${playerName}! Welcome, and please refresh the page.` });
 		}
 		if (!gameModule) {
 			return res.render('error', { message: `No game ${gameName}` });
