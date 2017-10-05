@@ -280,6 +280,9 @@ class GamePublic {
 	}
 }
 
+// A game module references one user game (under `games/`). There should be one per game name. Also has:
+// - Game instances: instance of the game, one per group of players.
+// - User game module: the code of the game itself (the .js file under `games/<gameName>.js`).
 class GameModule {
 	constructor(engine, gameName, userGameModule) {
 		this.engine = engine;
