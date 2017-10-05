@@ -1,6 +1,9 @@
 html
 	head
+		meta(http-equiv='refresh' content=2)
 		title Please wait
 	body
-		h1 Please wait
-		p All players haven't yet joined.
+		h1 Game #{gameName}
+		p You joined the game.
+		p(style='color:#080;') #{current} out of #{total} players available.
+		p Game will start once the count is reached.

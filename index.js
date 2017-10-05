@@ -133,11 +133,12 @@ class TimeoutCommand extends Command {
 
 // Private part of GamePublic. Internal methods.
 class GamePrivate {
-	constructor(gamePublic, enginePrivate, gameModule) {
-		this.enginePrivate = enginePrivate;
+	constructor(gamePublic, engine, gameModule, userGameModule) {
+		this.engine = engine;
 		this.gameModule = gameModule;
 		this.players = [];
 		this.public = gamePublic;
+		this.userGameModule = userGameModule;
 	}
 	// Adds a command for a given player. Snapshots logs until now and clears them. The command will output them.
 	addCommand(playerNo, newCommand) {
@@ -145,24 +146,26 @@ class GamePrivate {
 		newCommand.addToList(this.players[playerNo].commands, this.players[playerNo].pendingLogs);
 		this.players[playerNo].pendingLogs = '';
 		// Save player data occasionally, not sure this is the best place
-		this.enginePrivate.persistPlayerData(this.players[playerNo].playerName);
+		this.engine.persistPlayerData(this.players[playerNo].playerName);
 		return newCommand.promise;
 	}
 	addPlayer(playerName) {
 		if (this.findPlayerNo(playerName) >= 0) throw new Error(`Player ${playerName} already part of this game!`);
-		if (!this.hasFreeSpot()) throw new Error(`This game is already full! ${playerName} cannot join.`);
+		if (this.players.length >= this.requiredPlayers) throw new Error(`This game is already full! ${playerName} cannot join.`);
 		const playerNo = this.players.length;
-		const playerData = this.fetchPlayerData(playerName);
+		const playerData = this.engine.getPlayerUserData(playerName);
 		this.players.push({ playerName: playerName, waiting: false, pendingLogs: '', commands: [], data: playerData });
 		// All joined -> start the game
-		console.log(`Game has ${this.players.length}/${this.gameModule.numPlayers}`);
-		if (this.players.length === this.gameModule.numPlayers) {
+		console.log(`Game has ${this.players.length}/${this.requiredPlayers}`);
+		if (this.players.length === this.requiredPlayers) {
 			console.log('Starting game');
-			this.gameModule.makeInstance(this.public).then(() => {
+			this.userGameModule.makeInstance(this.public).then(() => {
 				console.log('Game finished');
-				this.enginePrivate.persistPlayerData(playerName);
+				this.engine.persistPlayerData(playerName);
+				this.gameModule.removeInstance(this);
 			}).catch((ex) => {
 				console.error('Game crashed, player data not saved', ex);
+				this.gameModule.removeInstance(this);
 			});
 		}
 		return playerNo;
@@ -171,16 +174,21 @@ class GamePrivate {
 	findPlayerNo(playerName) {
 		return this.players.findIndex(p => p.playerName === playerName);
 	}
-	hasFreeSpot() {
-		return this.players.length < this.gameModule.numPlayers;
-	}
 	// Appends to the pending logs for a given player.
 	logToPlayer(playerNo, message) {
 		this.players[playerNo].pendingLogs += message + '\n';
 	}
+	// Current count of players
+	get numPlayers() {
+		return this.players.length;
+	}
 	// Processes an express request
 	processReq(playerNo, req, res) {
 		console.log(`Processing request for ${playerNo}`, this.players[playerNo]);
+		// Not enough players
+		if (this.players.length < this.requiredPlayers) {
+			return res.render('missingPlayers', { current: this.numPlayers, gameName: this.gameName, total: this.requiredPlayers });
+		}
 		// This will switch to false if any command sends a response to the client
 		// Else you may want to periodically call processReqForAnyPlayer
 		this.players[playerNo].waiting = true;
@@ -192,7 +200,7 @@ class GamePrivate {
 	// You can call this is you just want to see if there's anything in the command buffer for a player
 	processReqForPlayer(playerNo, req, res) {
 		let processed = false;
-		console.log(`processing ${this.players[playerNo].commands.length} commands`);
+		console.log(`Processing ${this.players[playerNo].commands.length} commands`);
 		this.players[playerNo].commands.forEach(c => {
 			if (!processed) {
 				processed = c.tryProcess(req, res, this, playerNo);
@@ -204,6 +212,10 @@ class GamePrivate {
 	renderTemplate(res, playerNo, template, params) {
 		res.render(template, params);
 		this.players[playerNo].waiting = false;
+	}
+	// Required players to play
+	get requiredPlayers() {
+		return this.userGameModule.numPlayers;
 	}
 	// Adds a NoticeCommand for the user
 	showNoticeToPlayer(playerNo, text) {
@@ -221,8 +233,8 @@ class GamePrivate {
 
 // Allows for various operations within the game. Pay attention to the async methods, which you need to use with await.
 class GamePublic {
-	constructor(enginePrivate, gameModule) {
-		this.private = new GamePrivate(this, enginePrivate, gameModule);
+	constructor(engine, gameModule, userGameModule) {
+		this.private = new GamePrivate(this, engine, gameModule, userGameModule);
 	}
 
 	// Player data, freely manipulable
@@ -269,26 +281,25 @@ class GamePublic {
 }
 
 class GameModule {
-	constructor(enginePrivate, gameName, gameModule) {
-		this.enginePrivate = enginePrivate;
-		this.gameModule = gameModule;
+	constructor(engine, gameName, userGameModule) {
+		this.engine = engine;
 		this.gameName = gameName;
 		this.gameInstances = [];
+		this.userGameModule = userGameModule;
 	}
-
+	// Creates a new instance of this game module.
 	createInstance(firstPlayerName) {
 		// Debug check
 		if (this.findPlayer(firstPlayerName)) throw new Error(`Player ${name} is already part of game ${this.gameName}`);
 		// Create a container for this instance, with the current player
-		const inst = new GamePublic(this.enginePrivate, this.gameModule);
+		const inst = new GamePublic(this.engine, this, this.userGameModule);
 		this.gameInstances.push(inst.private);
 		return inst.private;
 	}
-
+	// Returns an instance that requires an additional player (or null if none).
 	findFreeInstance() {
-		return this.gameInstances.find(i => i.hasFreeSpot());
+		return this.gameInstances.find(i => i.numPlayers < i.requiredPlayers);
 	}
-
 	// Returns either null (not part of the game) or {instanceNo, playerNo}
 	findPlayer(playerName) {
 		for (let i = 0; i < this.gameInstances.length; i += 1) {
@@ -297,7 +308,7 @@ class GameModule {
 		}
 		return null;
 	}
-
+	// Front-end for an Express.js request.
 	processRequest(req, res, playerName) {
 		// Playing in this game? (instanceNo, playerNo within this instance)
 		const playerInGame = this.findPlayer(playerName);
@@ -316,8 +327,14 @@ class GameModule {
 		}
 		console.log(`Adding ${playerName} to instance of ${this.gameName}`);
 		const playerNo = instance.addPlayer(playerName);
-		// Show him the waiting screen
-		res.render('pleaseWait', {});
+		instance.processReq(playerNo, req, res);
+	}
+	// Removes an instance, usually once finished
+	removeInstance(gamePrivate) {
+		const found = this.gameInstances.indexOf(gamePrivate);
+		if (found < 0) throw new Error(`Removing non-existing instance of game ${this.gameName}`);
+		console.log(`Removing instance ${found} of ${this.gameName}`);
+		this.gameInstances.splice(found, 1);
 	}
 }
 
@@ -330,7 +347,7 @@ class PlayerState {
 	}
 	// Fetch user data from disk. Throws an exception in case the file doesn't exist.
 	fetch() {
-		this.userData = JSON.parse(fs.readFileSync(`./db/players/${playerName}.json`).toString());
+		this.userData = JSON.parse(fs.readFileSync(`./db/players/${this.playerName}.json`).toString());
 	}
 	// Persists any change to the disk. Call after modification.
 	persist() {
@@ -338,8 +355,8 @@ class PlayerState {
 	}
 }
 
-// Front-end class for the engine
-class EnginePrivate {
+// Front-end class for the main request processing engine
+class Engine {
 	constructor() {
 		this.gameModules = {};
 		this.playerStates = {};
@@ -356,11 +373,12 @@ class EnginePrivate {
 		return playerState.userData;
 	}
 	// After loading the game, you need to create instances
+	// TODO would be best in GameModule
 	loadGameModuleIfNeeded(gameName) {
 		if (this.gameModules[gameName]) return this.gameModules[gameName];
 		try {
-			const gameModule = require(`./games/${gameName}`);
-			return this.gameModules[gameName] = new GameModule(this, gameName, gameModule);
+			const userGameModule = require(`./games/${gameName}`);
+			return this.gameModules[gameName] = new GameModule(this, gameName, userGameModule);
 		} catch (e) {
 			console.error(`Failed to load the game ${gameName}`, e);
 			return null;
@@ -376,6 +394,7 @@ class EnginePrivate {
 		try {
 			return !!this.getPlayerUserData(playerName);
 		} catch (e) {
+			console.error(e);
 			return false;
 		}
 	}
@@ -395,7 +414,7 @@ class EnginePrivate {
 // -------------------------------------------------
 const express = require('express');
 const app = express();
-const engine = new EnginePrivate();
+const engine = new Engine();
 
 app.set('view engine', 'pug');
 
