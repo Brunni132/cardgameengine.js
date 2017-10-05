@@ -218,16 +218,18 @@ class GamePrivate {
 		return this.userGameModule.numPlayers;
 	}
 	// Adds a NoticeCommand for the user
-	showNoticeToPlayer(playerNo, text) {
+	showNoticeToPlayer(playerNo, text, options) {
+		options = options || {};
+		console.log('OPTIONS', options);
+		if (options.timeout) {
+			return this.addCommand(playerNo, new TimeoutCommand(text, options.timeout));
+		}
 		return this.addCommand(playerNo, new NoticeCommand(text));
 	}
-	// Adds a TimeoutCommand for the user
-	showPendingLogsToPlayer(playerNo, text, timeout) {
-		return this.addCommand(playerNo, new TimeoutCommand(text, timeout || DEFAULT_DISPLAY_TIMEOUT));
-	}
 	// Adds a RequestCommand for the user
-	requestToPlayer(playerNo, question, validateCb) {
-		return this.addCommand(playerNo, new RequestCommand(question, validateCb));
+	requestToPlayer(playerNo, question, options) {
+		options = options || {};
+		return this.addCommand(playerNo, new RequestCommand(question, options.validateCb));
 	}
 }
 
@@ -252,31 +254,24 @@ class GamePublic {
 		return this.private.logToPlayer(playerNo, message);
 	}
 
-	// Requests input from the player (and blocks him until the call returns)
-	async requestToEveryone(question, validateCb) {
+	// Requests input from the player (and blocks him until the call returns).
+	// Options: validateCb=callback that receives a response where you can get .playerNo and .text, and call .ok() or .reject('reason').
+	async requestToEveryone(question, options) {
 		return await Promise.all(
-			this.player.map((p, playerNo) => this.private.requestToPlayer(playerNo, question, validateCb)));
+			this.player.map((p, playerNo) => this.private.requestToPlayer(playerNo, question, options)));
 	}
 	async requestToPlayer(playerNo, question, validateCb) {
-		return await this.private.requestToPlayer(playerNo, question, validateCb);
+		return await this.private.requestToPlayer(playerNo, question, options);
 	}
 
 	// Shows a notice to the player and returns when he presses the Next button.
-	async showNoticeToEveryone(text) {
+	// Options: timeout=period where page auto-refreshes (do not pass to have a Next button).
+	async showNoticeToEveryone(text, options) {
 		return await Promise.all(
-			this.player.map((p, playerNo) => this.private.showNoticeToPlayer(playerNo, text)));
+			this.player.map((p, playerNo) => this.private.showNoticeToPlayer(playerNo, text, options)));
 	}
-	async showNoticeToPlayer(playerNo, text) {
-		return await this.private.showNoticeToPlayer(playerNo, text);
-	}
-
-	// Shows logs + message briefly (timeout period where page auto-refreshes)
-	async showPendingLogsToEveryone(text, timeout) {
-		return await Promise.all(
-			this.player.map((p, playerNo) => this.private.showPendingLogsToPlayer(playerNo, text, timeout)));
-	}
-	async showPendingLogsToPlayer(playerNo, text, timeout) {
-		return await this.private.showPendingLogsToPlayer(playerNo, text, timeout);
+	async showNoticeToPlayer(playerNo, text, options) {
+		return await this.private.showNoticeToPlayer(playerNo, text, options);
 	}
 }
 

@@ -26,12 +26,12 @@ async function GameInstance(game) {
 				return response.reject('Unavailable choice');
 			};
 
-			await game.requestToEveryone('Your play? (r, p os s)', verifyPlay);
+			await game.requestToEveryone('Your play? (r, p os s)', { validateCb: verifyPlay });
 
 			const winner = winnerOfRPS(plays[0], plays[1]);
 			game.logToEveryone(`P1 played ${plays[0]}, P2 played ${plays[1]}`);
 			if (winner === -1) {
-				game.showNoticeToEveryone('It\'s a draw!');
+				game.showNoticeToEveryone('It\'s a draw!', { timeout: 3 });
 			} else {
 				game.showNoticeToPlayer(0, winner === 0 ? 'You won' : 'You lost');
 				game.showNoticeToPlayer(1, winner === 1 ? 'You won' : 'You lost');
