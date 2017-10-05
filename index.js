@@ -284,11 +284,12 @@ class GamePublic {
 // - Game instances: instance of the game, one per group of players.
 // - User game module: the code of the game itself (the .js file under `games/<gameName>.js`).
 class GameModule {
-	constructor(engine, gameName, userGameModule) {
+	// Note: the gameName must exist, else an exception is thrown!
+	constructor(engine, gameName) {
 		this.engine = engine;
 		this.gameName = gameName;
 		this.gameInstances = [];
-		this.userGameModule = userGameModule;
+		this.userGameModule = require(`./games/${gameName}`);
 	}
 	// Creates a new instance of this game module.
 	createInstance(firstPlayerName) {
@@ -376,15 +377,12 @@ class Engine {
 		return this.playerStates[playerName].userData;
 	}
 	// After loading the game, you need to create instances
-	// TODO would be best in GameModule
 	loadGameModuleIfNeeded(gameName) {
 		if (this.gameModules[gameName]) return this.gameModules[gameName];
 		try {
-			const userGameModule = require(`./games/${gameName}`);
-			return this.gameModules[gameName] = new GameModule(this, gameName, userGameModule);
+			return this.gameModules[gameName] = new GameModule(this, gameName);
 		} catch (e) {
-			console.error(`Failed to load the game ${gameName}`, e);
-			return null;
+			return console.error(`Failed to load the game ${gameName}`, e);
 		}
 	}
 	// Call after modification.
