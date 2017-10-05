@@ -300,24 +300,25 @@ class GameModule {
 	findFreeInstance() {
 		return this.gameInstances.find(i => i.numPlayers < i.requiredPlayers);
 	}
-	// Returns either null (not part of the game) or {instanceNo, playerNo}
+	// Returns either null (not part of the game) or {instance, playerNo}
 	findPlayer(playerName) {
 		for (let i = 0; i < this.gameInstances.length; i += 1) {
 			const playerNo = this.gameInstances[i].findPlayerNo(playerName);
-			if (playerNo >= 0) return { instanceNo: i, playerNo: playerNo };
+			if (playerNo >= 0) return { instance: this.gameInstances[i], playerNo: playerNo };
 		}
 		return null;
 	}
 	// Front-end for an Express.js request.
 	processRequest(req, res, playerName) {
-		// Playing in this game? (instanceNo, playerNo within this instance)
+		// Playing in this game? (instance, playerNo within this instance)
 		const playerInGame = this.findPlayer(playerName);
 		// In game -> route the request
 		if (playerInGame) {
-			const inst = this.gameInstances[playerInGame.instanceNo];
-			inst.processReq(playerInGame.playerNo, req, res);
+			playerInGame.instance.processReq(playerInGame.playerNo, req, res);
 			return;
 		}
+		// Not in game, check if the player is doing some other game
+		this.engine.removePlayerFromRunningGame(playerName);
 		// Not in game, find a free instance
 		let instance = this.findFreeInstance();
 		if (!instance) {
@@ -333,7 +334,7 @@ class GameModule {
 	removeInstance(gamePrivate) {
 		const found = this.gameInstances.indexOf(gamePrivate);
 		if (found < 0) throw new Error(`Removing non-existing instance of game ${this.gameName}`);
-		console.log(`Removing instance ${found} of ${this.gameName}`);
+		console.log(`Removing instance ${found}/${this.gameInstances.length} of ${this.gameName}`);
 		this.gameInstances.splice(found, 1);
 	}
 }
@@ -414,6 +415,19 @@ class Engine {
 			return res.render('error', { message: `No game ${gameName}` });
 		}
 		return gameModule.processRequest(req, res, playerName);
+	}
+	removePlayerFromRunningGame(playerName) {
+		// Find any game the player is playing and remove the instance
+		for (let key in this.gameModules) {
+			if (this.gameModules.hasOwnProperty(key)) {
+				const gameModule = this.gameModules[key];
+				const foundPlayer = gameModule.findPlayer(playerName);
+				if (foundPlayer) {
+					// Since the game doesn't make any sense without the player, let's simply remove the instance itself
+					gameModule.removeInstance(foundPlayer.instance);
+				}
+			}
+		}
 	}
 	// Unloads a game module and sends a confirmation to the response
 	unloadGameModule(gameName, res) {
