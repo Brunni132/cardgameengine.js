@@ -145,7 +145,7 @@ class GamePrivate {
 		newCommand.addToList(this.players[playerNo].commands, this.players[playerNo].pendingLogs);
 		this.players[playerNo].pendingLogs = '';
 		// Save player data occasionally, not sure this is the best place
-		this.persistPlayerData(playerNo);
+		this.enginePrivate.persistPlayerData(this.players[playerNo].playerName);
 		return newCommand.promise;
 	}
 	addPlayer(playerName) {
@@ -160,20 +160,12 @@ class GamePrivate {
 			console.log('Starting game');
 			this.gameModule.makeInstance(this.public).then(() => {
 				console.log('Game finished');
-				this.persistPlayerData(playerNo);
+				this.enginePrivate.persistPlayerData(playerName);
 			}).catch((ex) => {
 				console.error('Game crashed, player data not saved', ex);
 			});
 		}
 		return playerNo;
-	}
-	fetchPlayerData(playerName) {
-		try {
-			return JSON.parse(fs.readFileSync(`./db/players/${playerName}.json`).toString());
-		} catch (e) {
-			// File not readable -> return default info
-			return { name: playerName };
-		}
 	}
 	// >= 0 if part of the game (player ID)
 	findPlayerNo(playerName) {
@@ -185,12 +177,6 @@ class GamePrivate {
 	// Appends to the pending logs for a given player.
 	logToPlayer(playerNo, message) {
 		this.players[playerNo].pendingLogs += message + '\n';
-	}
-	// After a modification, persist it to the disk
-	persistPlayerData(playerNo) {
-		const playerName = this.players[playerNo].playerName;
-		const result = JSON.stringify(this.players[playerNo].data);
-		filendir.writeFileSync(`./db/players/${playerName}.json`, result);
 	}
 	// Processes an express request
 	processReq(playerNo, req, res) {
@@ -312,8 +298,7 @@ class GameModule {
 		return null;
 	}
 
-	processRequest(req, res, params) {
-		const playerName = params.playerName;
+	processRequest(req, res, playerName) {
 		// Playing in this game? (instanceNo, playerNo within this instance)
 		const playerInGame = this.findPlayer(playerName);
 		// In game -> route the request
@@ -336,44 +321,74 @@ class GameModule {
 	}
 }
 
-// Front-end class
+// Represents an existing player. Call fetch() on it after creation to populate it with data from the DB.
+class PlayerState {
+	constructor(playerName) {
+		this.currentGame = null;
+		this.playerName = playerName;
+		this.userData = null;
+	}
+	// Fetch user data from disk. Throws an exception in case the file doesn't exist.
+	fetch() {
+		this.userData = JSON.parse(fs.readFileSync(`./db/players/${playerName}.json`).toString());
+	}
+	// Persists any change to the disk. Call after modification.
+	persist() {
+		filendir.writeFileSync(`./db/players/${this.playerName}.json`, JSON.stringify(this.userData));
+	}
+}
+
+// Front-end class for the engine
 class EnginePrivate {
 	constructor() {
-		this.gameList = {};
-		this.playerDB = {
-			arnaud: {
-				properties: {
-					chips: 100,
-				}
-			},
-			florian: {
-				properties: {
-					chips: 150,
-				}
-			}
-		};
-		Object.keys(this.playerDB).forEach(k => this.playerDB[k].currentGame = null);
+		this.gameModules = {};
+		this.playerStates = {};
 	}
-
+	// Gets user player data for a given player, loading it from disk if needed.
+	// Note: the player MUST exist (use playerExists in case of doubt) or an exception is thrown.
+	getPlayerUserData(playerName) {
+		let playerState = this.playerStates[playerName];
+		// Load it from disk if not existing
+		if (!playerState) {
+			this.playerStates[playerName] = playerState = new PlayerState(playerName);
+			playerState.fetch();
+		}
+		return playerState.userData;
+	}
 	// After loading the game, you need to create instances
 	loadGameModuleIfNeeded(gameName) {
-		if (this.gameList[gameName]) return this.gameList[gameName];
+		if (this.gameModules[gameName]) return this.gameModules[gameName];
 		try {
 			const gameModule = require(`./games/${gameName}`);
-			return this.gameList[gameName] = new GameModule(this, gameName, gameModule);
+			return this.gameModules[gameName] = new GameModule(this, gameName, gameModule);
 		} catch (e) {
 			console.error(`Failed to load the game ${gameName}`, e);
 			return null;
 		}
 	}
-
-	processRequest(req, res, params) {
-		const gameName = params.gameName;
-		const gameModule = this.loadGameModuleIfNeeded(gameName);
-		if (gameModule) {
-			return gameModule.processRequest(req, res, params);
+	// Call after modification.
+	persistPlayerData(playerName) {
+		if (!this.playerStates[playerName]) throw new Error(`Player ${playerName} does not exist or is not loaded`);
+		this.playerStates[playerName].persist();
+	}
+	// Checks whether the player with a given name exists.
+	playerExists(playerName) {
+		try {
+			return !!this.getPlayerUserData(playerName);
+		} catch (e) {
+			return false;
 		}
-		return res.render('error', { message: `No game ${gameName}` });
+	}
+	// Process an Express.js request, routing it to the right game
+	processRequest(req, res, gameName, playerName) {
+		const gameModule = this.loadGameModuleIfNeeded(gameName);
+		if (!this.playerExists(playerName)) {
+			return res.render('error', { message: `No player ${playerName}` });
+		}
+		if (!gameModule) {
+			return res.render('error', { message: `No game ${gameName}` });
+		}
+		return gameModule.processRequest(req, res, playerName);
 	}
 }
 
@@ -385,11 +400,11 @@ const engine = new EnginePrivate();
 app.set('view engine', 'pug');
 
 app.get('/player/:playerName', function (req, res) {
-	engine.processRequest(req, res, { playerName: req.param('playerName'), gameName: 'home' });
+	engine.processRequest(req, res, 'home', req.param('playerName'));
 });
 
 app.get('/player/:playerName/:gameName', function (req, res) {
-	engine.processRequest(req, res, { playerName: req.param('playerName'), gameName: req.param('gameName') });
+	engine.processRequest(req, res, req.param('gameName'), req.param('playerName'));
 });
 
 app.listen(3000);
