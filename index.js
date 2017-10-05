@@ -1,7 +1,6 @@
 const filendir = require('filendir');
 const fs = require('fs');
 const uuidv4 = require('uuid/v4');
-const DEFAULT_DISPLAY_TIMEOUT = 3;
 
 // A command is like a state (except that you may have more than one state running in parallel, typically one per connected client).
 // Commands added last are processed last, which means that even if an user has not yet completed a given state, you can still advance in the game and stack new commands.
