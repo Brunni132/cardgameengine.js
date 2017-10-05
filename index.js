@@ -187,7 +187,7 @@ class GamePrivate {
 		console.log(`Processing request for ${playerNo}`, this.players[playerNo]);
 		// Not enough players
 		if (this.players.length < this.requiredPlayers) {
-			return res.render('missingPlayers', { current: this.numPlayers, gameName: this.gameName, total: this.requiredPlayers });
+			return res.render('missingPlayers', { current: this.numPlayers, gameName: this.gameModule.gameName, total: this.requiredPlayers });
 		}
 		// This will switch to false if any command sends a response to the client
 		// Else you may want to periodically call processReqForAnyPlayer
@@ -401,6 +401,7 @@ class Engine {
 	// Process an Express.js request, routing it to the right game
 	processRequest(req, res, gameName, playerName) {
 		const gameModule = this.loadGameModuleIfNeeded(gameName);
+		playerName = playerName.toLowerCase();
 		if (!this.playerExists(playerName)) {
 			return res.render('error', { message: `No player ${playerName}` });
 		}
