@@ -410,6 +410,15 @@ class Engine {
 		}
 		return gameModule.processRequest(req, res, playerName);
 	}
+	// Unloads a game module and sends a confirmation to the response
+	unloadGameModule(gameName, res) {
+		if (this.gameModules[gameName]) {
+			this.gameModules[gameName] = null;
+			delete require.cache[require.resolve(`./games/${gameName}`)];
+			return res.send('OK');
+		}
+		return res.send(`Module ${gameName} not loaded`);
+	}
 }
 
 // -------------------------------------------------
@@ -418,6 +427,10 @@ const app = express();
 const engine = new Engine();
 
 app.set('view engine', 'pug');
+
+app.get('/reload/:gameName', function (req, res) {
+	engine.unloadGameModule(req.param('gameName'), res);
+});
 
 app.get('/player/:playerName', function (req, res) {
 	engine.processRequest(req, res, 'home', req.param('playerName'));
