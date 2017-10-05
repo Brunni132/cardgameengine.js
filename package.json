@@ -11,6 +11,8 @@
   },
   "devDependencies": {},
   "scripts": {
+    "server": "node index.js",
+    "registerUser": "node registerUser.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

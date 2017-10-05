@@ -348,10 +348,12 @@ class PlayerState {
 	// Fetch user data from disk. Throws an exception in case the file doesn't exist.
 	fetch() {
 		this.userData = JSON.parse(fs.readFileSync(`./db/players/${this.playerName}.json`).toString());
+		return this;
 	}
 	// Persists any change to the disk. Call after modification.
 	persist() {
 		filendir.writeFileSync(`./db/players/${this.playerName}.json`, JSON.stringify(this.userData));
+		return this;
 	}
 }
 
@@ -364,13 +366,11 @@ class Engine {
 	// Gets user player data for a given player, loading it from disk if needed.
 	// Note: the player MUST exist (use playerExists in case of doubt) or an exception is thrown.
 	getPlayerUserData(playerName) {
-		let playerState = this.playerStates[playerName];
 		// Load it from disk if not existing
-		if (!playerState) {
-			this.playerStates[playerName] = playerState = new PlayerState(playerName);
-			playerState.fetch();
+		if (!this.playerStates[playerName]) {
+			this.playerStates[playerName] = new PlayerState(playerName).fetch();
 		}
-		return playerState.userData;
+		return this.playerStates[playerName].userData;
 	}
 	// After loading the game, you need to create instances
 	// TODO would be best in GameModule
