@@ -1,5 +1,6 @@
 const filendir = require('filendir');
 const fs = require('fs');
+const util = require('util');
 const uuidv4 = require('uuid/v4');
 
 // A command is like a state (except that you may have more than one state running in parallel, typically one per connected client).
@@ -239,19 +240,21 @@ class GamePublic {
 		this.private = new GamePrivate(this, engine, gameModule, userGameModule);
 	}
 
-	// Player data, freely manipulable
+	// Player data (array, indexed by playerNo -- Player 1 is 0, Player 2 is 1, etc.), freely manipulable. Persisted on the disk after change.
 	get player() {
 		return this.private.players.map(player => player.data);
 	}
 
-	// Logging gets outputted to the player in an asynchronous manner
-	logToEveryone(message) {
+	// Logging gets outputted to the player on the next page (request*, showNotice*). Use like console.log().
+	logToEveryone(...message) {
 		for (let i = 0; i < this.player.length; i += 1) {
-			this.private.logToPlayer(i, message);
+			this.logToPlayer(i, ...message);
 		}
 	}
-	logToPlayer(playerNo, message) {
-		return this.private.logToPlayer(playerNo, message);
+	logToPlayer(playerNo, ...message) {
+		// Stringify it as an array
+		message = message.map(m => typeof m === 'string' ? m : util.inspect(m));
+		return this.private.logToPlayer(playerNo, message.join(' '));
 	}
 
 	// Requests input from the player (and blocks him until the call returns).
