@@ -296,8 +296,8 @@ class GameModule {
 		return null;
 	}
 
-	processRequest(req, res) {
-		const playerName = req.param('playerName');
+	processRequest(req, res, params) {
+		const playerName = params.playerName;
 		// Playing in this game? (instanceNo, playerNo within this instance)
 		const playerInGame = this.findPlayer(playerName);
 		// In game -> route the request
@@ -351,11 +351,11 @@ class EnginePrivate {
 		}
 	}
 
-	processRequest(req, res) {
-		const gameName = req.param('gameName');
+	processRequest(req, res, params) {
+		const gameName = params.gameName;
 		const gameModule = this.loadGameModuleIfNeeded(gameName);
 		if (gameModule) {
-			return gameModule.processRequest(req, res);
+			return gameModule.processRequest(req, res, params);
 		}
 		return res.render('error', { message: `No game ${gameName}` });
 	}
@@ -368,9 +368,12 @@ const engine = new EnginePrivate();
 
 app.set('view engine', 'pug');
 
-app.get('/player/:playerName/:gameName', function (req, res) {
-	engine.processRequest(req, res);
+app.get('/player/:playerName', function (req, res) {
+	engine.processRequest(req, res, { playerName: req.param('playerName'), gameName: 'home' });
 });
 
-app.listen(3000, function () {
+app.get('/player/:playerName/:gameName', function (req, res) {
+	engine.processRequest(req, res, { playerName: req.param('playerName'), gameName: req.param('gameName') });
 });
+
+app.listen(3000);
