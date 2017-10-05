@@ -1,3 +1,5 @@
+const filendir = require('filendir');
+const fs = require('fs');
 const uuidv4 = require('uuid/v4');
 const DEFAULT_DISPLAY_TIMEOUT = 3;
 
@@ -132,66 +134,80 @@ class TimeoutCommand extends Command {
 // Private part of GamePublic. Internal methods.
 class GamePrivate {
 	constructor(gamePublic, enginePrivate, gameModule) {
-		this.commands = new Array(gameModule.numPlayers);
 		this.enginePrivate = enginePrivate;
 		this.gameModule = gameModule;
-		this.playingPlayers = [];
-		this.playerWaiting = new Array(gameModule.numPlayers);
-		this.playerPendingLogs = new Array(gameModule.numPlayers);
+		this.players = [];
 		this.public = gamePublic;
-		for (let i = 0; i < gameModule.numPlayers; i += 1) {
-			this.commands[i] = [];
-			this.playerPendingLogs[i] = '';
-		}
 	}
 	// Adds a command for a given player. Snapshots logs until now and clears them. The command will output them.
 	addCommand(playerNo, newCommand) {
 		console.log(`Adding command for ${playerNo}`, newCommand);
-		newCommand.addToList(this.commands[playerNo], this.playerPendingLogs[playerNo]);
-		this.playerPendingLogs[playerNo] = '';
+		newCommand.addToList(this.players[playerNo].commands, this.players[playerNo].pendingLogs);
+		this.players[playerNo].pendingLogs = '';
+		// Save player data occasionally, not sure this is the best place
+		this.persistPlayerData(playerNo);
 		return newCommand.promise;
 	}
 	addPlayer(playerName) {
 		if (this.findPlayerNo(playerName) >= 0) throw new Error(`Player ${playerName} already part of this game!`);
 		if (!this.hasFreeSpot()) throw new Error(`This game is already full! ${playerName} cannot join.`);
-		const playerNo = this.playingPlayers.length;
-		this.playingPlayers.push({ playerName: playerName });
+		const playerNo = this.players.length;
+		const playerData = this.fetchPlayerData(playerName);
+		this.players.push({ playerName: playerName, waiting: false, pendingLogs: '', commands: [], data: playerData });
 		// All joined -> start the game
-		console.log(`Game has ${this.playingPlayers.length}/${this.gameModule.numPlayers}`);
-		if (this.playingPlayers.length === this.gameModule.numPlayers) {
-			this.gameModule.makeInstance(this.public);
+		console.log(`Game has ${this.players.length}/${this.gameModule.numPlayers}`);
+		if (this.players.length === this.gameModule.numPlayers) {
 			console.log('Starting game');
+			this.gameModule.makeInstance(this.public).then(() => {
+				console.log('Game finished');
+				this.persistPlayerData(playerNo);
+			}).catch((ex) => {
+				console.error('Game crashed, player data not saved', ex);
+			});
 		}
 		return playerNo;
 	}
+	fetchPlayerData(playerName) {
+		try {
+			return JSON.parse(fs.readFileSync(`./db/players/${playerName}.json`).toString());
+		} catch (e) {
+			// File not readable -> return default info
+			return { name: playerName };
+		}
+	}
 	// >= 0 if part of the game (player ID)
 	findPlayerNo(playerName) {
-		return this.playingPlayers.findIndex(p => p.playerName === playerName);
+		return this.players.findIndex(p => p.playerName === playerName);
 	}
 	hasFreeSpot() {
-		return this.playingPlayers.length < this.gameModule.numPlayers;
+		return this.players.length < this.gameModule.numPlayers;
 	}
 	// Appends to the pending logs for a given player.
 	logToPlayer(playerNo, message) {
-		this.playerPendingLogs[playerNo] += message + '\n';
+		this.players[playerNo].pendingLogs += message + '\n';
+	}
+	// After a modification, persist it to the disk
+	persistPlayerData(playerNo) {
+		const playerName = this.players[playerNo].playerName;
+		const result = JSON.stringify(this.players[playerNo].data);
+		filendir.writeFileSync(`./db/players/${playerName}.json`, result);
 	}
 	// Processes an express request
 	processReq(playerNo, req, res) {
-		console.log(`Processing request for ${playerNo}`, this.playingPlayers[playerNo]);
+		console.log(`Processing request for ${playerNo}`, this.players[playerNo]);
 		// This will switch to false if any command sends a response to the client
 		// Else you may want to periodically call processReqForAnyPlayer
-		this.playerWaiting[playerNo] = true;
+		this.players[playerNo].waiting = true;
 		// An answer wasn't given to the player, try later
-		if (!this.processReqForPlayer(playerNo, req, res) || this.playerWaiting[playerNo]) {
+		if (!this.processReqForPlayer(playerNo, req, res) || this.players[playerNo].waiting) {
 			this.renderTemplate(res, playerNo, 'pleaseWait', {});
 		}
 	}
 	// You can call this is you just want to see if there's anything in the command buffer for a player
 	processReqForPlayer(playerNo, req, res) {
 		let processed = false;
-		console.log(this.commands);
-		console.log(`processing ${this.commands[playerNo].length} commands`);
-		this.commands[playerNo].forEach(c => {
+		console.log(`processing ${this.players[playerNo].commands.length} commands`);
+		this.players[playerNo].commands.forEach(c => {
 			if (!processed) {
 				processed = c.tryProcess(req, res, this, playerNo);
 			}
@@ -201,7 +217,7 @@ class GamePrivate {
 	// Renders a pug template to the user output. Required to be done at some point in a processReq.
 	renderTemplate(res, playerNo, template, params) {
 		res.render(template, params);
-		this.playerWaiting[playerNo] = false;
+		this.players[playerNo].waiting = false;
 	}
 	// Adds a NoticeCommand for the user
 	showNoticeToPlayer(playerNo, text) {
@@ -225,7 +241,7 @@ class GamePublic {
 
 	// Player data, freely manipulable
 	get player() {
-		return this.private.playingPlayers;
+		return this.private.players.map(player => player.data);
 	}
 
 	// Logging gets outputted to the player in an asynchronous manner
