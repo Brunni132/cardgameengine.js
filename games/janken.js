@@ -56,8 +56,8 @@ async function GameInstance(game) {
 		game.logToPlayer(0, `Your hand: ${p1.hand.desc()}`);
 		game.logToPlayer(1, `Your hand: ${p2.hand.desc()}`);
 		await inParallel(
-			game.requestToPlayer(0, `Bet? [1..${p1.chips}]`, verifyBet),
-			game.requestToPlayer(1, `Bet? [1..${p2.chips}]`, verifyBet)
+			game.requestToPlayer(0, `Bet? [1..${p1.chips}]`, { verifyCb: verifyBet }),
+			game.requestToPlayer(1, `Bet? [1..${p2.chips}]`, { verifyCb: verifyBet })
 		);
 
 		let weHaveAWinner = false;
@@ -76,8 +76,8 @@ async function GameInstance(game) {
 			};
 
 			await inParallel(
-				game.requestToPlayer(0, `Play? ${p1.hand.desc()}`, verifyPlay),
-				game.requestToPlayer(1, `Play? ${p2.hand.desc()}`, verifyPlay)
+				game.requestToPlayer(0, `Play? ${p1.hand.desc()}`, { verifyCb: verifyPlay }),
+				game.requestToPlayer(1, `Play? ${p2.hand.desc()}`, { verifyCb: verifyPlay })
 			);
 
 			game.logToEveryone(`P1 played ${plays[0]}, P2 played ${plays[1]}`);

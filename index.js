@@ -117,6 +117,7 @@ class RequestCommand extends Command {
 
 // Shows a message to the user for a given amount of time.
 // Unlike others, this state is not blocking, it resumes the execution straight to the next.
+// TODO should be gone, and instead replaced by RequestCommand, just with another view to hide the Next button and trigger a click after timeout
 class TimeoutCommand extends Command {
 	constructor(text, timeout) {
 		super();
