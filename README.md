@@ -12,17 +12,15 @@ async function GameProgram(game) {
 	}
 
 	for (let round = 1; round <= 3; round += 1) {
-		const plays = [];
-		await game.requestToEveryone('Your play? (r, p os s)', { validateCb: (response) => {
+		const played = await game.requestToEveryone('Your play? (r, p os s)', { validateCb: (response) => {
 			if (['r', 'p', 's'].indexOf(response.text) >= 0) {
-				plays[response.playerNo] = response.text;
-				return response.ok();
+				return response.ok(response.text);
 			}
 			return response.reject('Unavailable choice');
 		}});
 
-		const winner = winnerOfRPS(plays[0], plays[1]);
-		game.logToEveryone(`P1 played ${plays[0]}, P2 played ${plays[1]}`);
+		const winner = winnerOfRPS(played[0], played[1]);
+		game.logToEveryone(`P1 played ${played[0]}, P2 played ${played[1]}`);
 		if (winner === -1) {
 			game.showNoticeToEveryone('It\'s a draw!');
 		} else {
@@ -33,7 +31,7 @@ async function GameProgram(game) {
 	}
 }
 
-exports default {
+module.exports = {
 	makeInstance: GameProgram,
 	numPlayers: 2
 };

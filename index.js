@@ -93,9 +93,9 @@ class RequestCommand extends Command {
 			const responseObj = {
 				text: req.param('answer'),
 				playerNo: playerNo,
-				ok: () => {
+				ok: (result) => {
 					// Note that we don't answer to the request, the client is still waiting
-					this.resolve(responseObj);
+					this.resolve(result);
 					return false;
 				},
 				reject: (reason) => {
@@ -154,8 +154,9 @@ class GamePrivate {
 		if (this.findPlayerNo(playerName) >= 0) throw new Error(`Player ${playerName} already part of this game!`);
 		if (this.players.length >= this.requiredPlayers) throw new Error(`This game is already full! ${playerName} cannot join.`);
 		const playerNo = this.players.length;
-		const playerData = this.engine.getPlayerUserData(playerName);
-		this.players.push({ playerName: playerName, waiting: false, pendingLogs: '', commands: [], data: playerData });
+		const playerData = { 'static': this.engine.getPlayerUserData(playerName) };
+		// gameData is the public namespace (non persisted) that appears on game.player[playerNo]. Contains a data member, persisted.
+		this.players.push({ playerName: playerName, waiting: false, pendingLogs: '', commands: [], gameData: playerData });
 		// All joined -> start the game
 		console.log(`Game has ${this.players.length}/${this.requiredPlayers}`);
 		if (this.players.length === this.requiredPlayers) {
@@ -242,7 +243,7 @@ class GamePublic {
 
 	// Player data (array, indexed by playerNo -- Player 1 is 0, Player 2 is 1, etc.), freely manipulable. Persisted on the disk after change.
 	get player() {
-		return this.private.players.map(player => player.data);
+		return this.private.players.map(player => player.gameData);
 	}
 
 	// Logging gets outputted to the player on the next page (request*, showNotice*). Use like console.log().

@@ -1,47 +1,32 @@
-// Refactoring ideas:
-// Commands always have the player ID
-// There are separate pipes (command list) for each player
-// We can register a callback when the pipe is empty for a given player
-// Players have a state (they are playing one game at once, we keep a link to the instance) that is persisted in DB
-// Each game can have multiple instances and declares how many players it needs to start
-// Configuration/story screens would be one-player games
-// When someone leaves the game, the other is not notified, he'll just go back to the /home app by himself
-const winnerOfRPS = (p1Vote, p2Vote) => {
-	if (p1Vote === p2Vote) return -1;
-	if (p1Vote === 'P' && p2Vote === 'R' || p1Vote === 'R' && p2Vote === 'S' || p1Vote === 'S' && p2Vote === 'P') return 0;
-	return 1;
-};
+async function GameProgram(game) {
+	function winnerOfRPS(p1Vote, p2Vote) {
+		if (p1Vote === p2Vote) return -1;
+		if (p1Vote === 'p' && p2Vote === 'r' || p1Vote === 'r' && p2Vote === 's' || p1Vote === 's' && p2Vote === 'p') return 0;
+		return 1;
+	}
 
-async function GameInstance(game) {
-	while (true) {
-		let weHaveAWinner = false;
-		for (let round = 1; round <= 3 && !weHaveAWinner; round += 1) {
-			const plays = [];
-			const verifyPlay = (response) => {
-				const played = response.text.toUpperCase();
-				if (['R', 'P', 'S'].indexOf(played) >= 0) {
-					plays[response.playerNo] = played;
-					return response.ok();
-				}
-				return response.reject('Unavailable choice');
-			};
-
-			await game.requestToEveryone('Your play? (r, p os s)', { validateCb: verifyPlay });
-
-			const winner = winnerOfRPS(plays[0], plays[1]);
-			game.logToEveryone(`P1 played ${plays[0]}, P2 played ${plays[1]}`);
-			if (winner === -1) {
-				game.showNoticeToEveryone('It\'s a draw!', { timeout: 3 });
-			} else {
-				game.showNoticeToPlayer(0, winner === 0 ? 'You won' : 'You lost');
-				game.showNoticeToPlayer(1, winner === 1 ? 'You won' : 'You lost');
-				weHaveAWinner = true;
+	for (let round = 1; round <= 3; round += 1) {
+		const played = await game.requestToEveryone('Your play? (r, p os s)', { validateCb: (response) => {
+			if (['r', 'p', 's'].indexOf(response.text) >= 0) {
+				return response.ok(response.text);
 			}
+			return response.reject('Unavailable choice');
+		}});
+
+		const winner = winnerOfRPS(played[0], played[1]);
+		game.logToEveryone(`P1 played ${played[0]}, P2 played ${played[1]}`);
+		if (winner === -1) {
+			await game.showNoticeToEveryone('It\'s a draw!');
+		} else {
+			await Promise.all([
+				game.showNoticeToPlayer(0, winner === 0 ? 'You won' : 'You lost'),
+				game.showNoticeToPlayer(1, winner === 1 ? 'You won' : 'You lost')]);
+			break;
 		}
 	}
 }
 
 module.exports = {
-	makeInstance: GameInstance,
-	numPlayers: 2,
+	makeInstance: GameProgram,
+	numPlayers: 2
 };
