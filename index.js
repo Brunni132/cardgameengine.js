@@ -222,7 +222,6 @@ class GamePrivate {
 	// Adds a NoticeCommand for the user
 	showNoticeToPlayer(playerNo, text, options) {
 		options = options || {};
-		console.log('OPTIONS', options);
 		if (options.timeout) {
 			return this.addCommand(playerNo, new TimeoutCommand(text, options.timeout));
 		}
