@@ -43,7 +43,7 @@ Technically, this tool is different from an engine that would automatically buil
 
 Run the server with `npm run server`. Then open your browser at http://localhost:3000/player/YOURNAME/GAMENAME. You may need to register users (`npm run registerUser YOURNAME`) before trying to play with them.
 
-Games are located in the `games/` directory. `GAMENAME` is the name of a .js file located inside this directory. If you have modified a game, you may restart it without restarting the server by loading http://localhost:3000/reload/GAMENAME on your browser.
+Games are located in the `games/` directory. `GAMENAME` is the name of a .js file located inside this directory. Modified games are reloaded automatically by the server, kicking out any user currently in it.
 
 Note that every player plays only one game at once. Trying to participate to another game will kill the game instance in which you were participating before (another instance will be automatically created for the remaining players, and the game will restart from the beginning once the player quota is reached).
 

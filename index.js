@@ -154,7 +154,7 @@ class GamePrivate {
 		if (this.findPlayerNo(playerName) >= 0) throw new Error(`Player ${playerName} already part of this game!`);
 		if (this.players.length >= this.requiredPlayers) throw new Error(`This game is already full! ${playerName} cannot join.`);
 		const playerNo = this.players.length;
-		const playerData = { 'static': this.engine.getPlayerUserData(playerName) };
+		const playerData = { name: playerName, 'static': this.engine.getPlayerUserData(playerName) };
 		// gameData is the public namespace (non persisted) that appears on game.player[playerNo]. Contains a data member, persisted.
 		this.players.push({ playerName: playerName, waiting: false, pendingLogs: '', commands: [], gameData: playerData });
 		// All joined -> start the game
@@ -284,10 +284,19 @@ class GamePublic {
 class GameModule {
 	// Note: the gameName must exist, else an exception is thrown!
 	constructor(engine, gameName) {
+		const modulePath = `./games/${gameName}`;
+		const moduleDiskPath = require.resolve(modulePath);
 		this.engine = engine;
 		this.gameName = gameName;
 		this.gameInstances = [];
-		this.userGameModule = require(`./games/${gameName}`);
+		this.userGameModule = require(modulePath);
+		fs.watch(moduleDiskPath, (eventType, filename) => {
+			if (eventType === 'change') {
+				console.log('File modified, invalidating module', filename);
+				delete require.cache[moduleDiskPath];
+				this.engine.uninstantiateGameModule(gameName);
+			}
+		});
 	}
 	// Creates a new instance of this game module.
 	createInstance(firstPlayerName) {
@@ -431,14 +440,9 @@ class Engine {
 			}
 		}
 	}
-	// Unloads a game module and sends a confirmation to the response
-	unloadGameModule(gameName, res) {
-		if (this.gameModules[gameName]) {
-			this.gameModules[gameName] = null;
-			delete require.cache[require.resolve(`./games/${gameName}`)];
-			return res.send('OK');
-		}
-		return res.send(`Module ${gameName} not loaded`);
+	// Unloads a game module (you may want to clear the require cache if you want to reload it from the disk next time)
+	uninstantiateGameModule(gameName) {
+		this.gameModules[gameName] = null;
 	}
 }
 
@@ -448,10 +452,6 @@ const app = express();
 const engine = new Engine();
 
 app.set('view engine', 'pug');
-
-app.get('/reload/:gameName', function (req, res) {
-	engine.unloadGameModule(req.param('gameName'), res);
-});
 
 app.get('/player/:playerName', function (req, res) {
 	engine.processRequest(req, res, 'home', req.param('playerName'));
