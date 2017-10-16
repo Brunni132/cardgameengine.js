@@ -1,9 +1,10 @@
 const coinToss = require('./helpers').coinToss;
+const didYouMean = require('didyoumean');
 const randomInt = require('./helpers').randomInt;
 
 const generateRPSHand = (game) => {
 	// TODO probability
-	return new Array(3).map(() => ['P', 'R', 'S'][randomInt(0, 3)]);
+	return new Array(3).fill(null).map(() => ['P', 'R', 'S'][randomInt(0, 3)]);
 };
 
 const describeRPSHand = (hand) => {
@@ -23,30 +24,64 @@ const winnerOfRPS = (p1Vote, p2Vote) => {
 
 
 async function GameInstance(game) {
-	// TODO refactor to have player.data for static shared data
 	const players = game.player;
 	const p1 = players[0], p2 = players[1];
 
+	const randomCard = () => randomInt(0, 3);
+	const ALL_SKILL_LIST = {
+		'nervesOfSteel': {
+			cost: 4,
+			preExecute: (mainPlayer, otherPlayer) => {
+				otherPlayer.usedSkill = null;
+			},
+			postExecute: (mainPlayer, otherPlayer) => {}
+		},
+		'replaceOneCardWithPa': {
+			cost: 3,
+			preExecute: (mainPlayer, otherPlayer) => {},
+			postExecute: (mainPlayer, otherPlayer) => {
+				mainPlayer.hand[randomCard()] = 'P';
+			}
+		},
+		'replaceOneCardWithChoki': {
+			cost: 3,
+			preExecute: (mainPlayer, otherPlayer) => {},
+			postExecute: (mainPlayer, otherPlayer) => {
+				mainPlayer.hand[randomCard()] = 'S';
+			}
+		},
+		'replaceOneCardWithGu': {
+			cost: 3,
+			preExecute: (mainPlayer, otherPlayer) => {},
+			postExecute: (mainPlayer, otherPlayer) => {
+				mainPlayer.hand[randomCard()] = 'R';
+			}
+		},
+	};
+
 	// Starting bet
-	game.logToPlayer(0, `Hello P1! You have ${p1.chips}`);
-	game.logToPlayer(1, `Hello P2! You have ${p2.chips}`);
-	if (!p1.chips) {
-		p1.chips = 150;
-		game.showNoticeToPlayer(0, `You had no chips, so gave you ${p1.chips} ;)`, { timeout: 3 });
+	game.logToPlayer(0, `Hello P1! You have ${p1.shared.chips} chips`);
+	game.logToPlayer(1, `Hello P2! You have ${p2.shared.chips} chips`);
+	if (p1.shared.chips <= 0) {
+		p1.shared.chips = 150;
+		game.showNoticeToPlayer(0, `You had no chips, so gave you ${p1.shared.chips} ;)`, { timeout: 3 });
 	}
-	if (!p2.chips) {
-		p2.chips = 150;
-		game.showNoticeToPlayer(1, `You had no chips, so gave you ${p2.chips} ;)`, { timeout: 3 });
+	if (p2.shared.chips <= 0) {
+		p2.shared.chips = 150;
+		game.showNoticeToPlayer(1, `You had no chips, so gave you ${p2.shared.chips} ;)`, { timeout: 3 });
 	}
 
-	const skillPoints = [5, 5];
+	p1.skillPoints = p2.skillPoints = 5;
+	p1.skillCards = Object.keys(ALL_SKILL_LIST);
+	p2.skillCards = Object.keys(ALL_SKILL_LIST);
 
 	while (true) {
-		const totalBet = [0, 0];
-		const hands = [generateRPSHand(), generateRPSHand()];
+		p1.bet = p2.bet = 0;
+		p1.hand = generateRPSHand();
+		p2.hand = generateRPSHand();
 		const bet = (playerNo, chips) => {
-			players[playerNo].chips -= chips;
-			totalBet[playerNo] += chips;
+			players[playerNo].shared.chips -= chips;
+			players[playerNo].bet += chips;
 		};
 		const fold = async function(playerNo) {
 			// TODO
@@ -62,22 +97,21 @@ async function GameInstance(game) {
 		bet(1 - currentPlayer, MINIMUM_BET);
 
 		// Now generate and reveal each players hand
-		game.logToPlayer(0, `Your hand: ${describeRPSHand(hands[0])}`);
-		game.logToPlayer(1, `Your hand: ${describeRPSHand(hands[1])}`);
+		game.logToPlayer(0, `Your hand: ${describeRPSHand(p1.hand)}`);
+		game.logToPlayer(1, `Your hand: ${describeRPSHand(p2.hand)}`);
 
 		const askToBet = async function(playerNo, question) {
-			return await game.requestToPlayer(playerNo, `${question}? [1…${players[playerNo].chips}]`, { validateCb: (response) => {
+			game.logToPlayer(playerNo, `Your in-game chips: ${players[playerNo].bet}, other: ${players[1 - playerNo].bet}`);
+			return await game.requestToPlayer(playerNo, `${question}? [1…${players[playerNo].shared.chips}]`, { validateCb: (response) => {
 				const bet = Math.floor(parseInt(response.text));
-				if (bet >= 1 && bet <= player[response.playerNo].chips) {
-					bets[response.playerNo] = bet;
+				if (bet >= 1 && bet <= players[response.playerNo].shared.chips) {
 					return response.ok(bet);
 				}
 				return response.reject('Cannot bet that');
 			}});
 		};
-
-		// Then ask the first player to raise or bet
 		const askFoldCallOrRaise = async function(playerNo) {
+			game.logToPlayer(playerNo, `Your in-game chips: ${players[playerNo].bet}, other: ${players[1 - playerNo].bet}`);
 			const choice = await game.requestToPlayer(playerNo, '[C]all, [R]aise or [F]old', { validateCb: (response) => {
 				if (['c', 'r', 'f'].indexOf(response.text.toLowerCase()) >= 0)
 					return response.ok(response.text.toLowerCase());
@@ -88,9 +122,8 @@ async function GameInstance(game) {
 			}
 			return choice;
 		};
-
 		const askMatchOrFold = async function(playerNo) {
-			const currentBet = totalBet[playerNo], matchChips = totalBet[1 - playerNo];
+			const currentBet = players[playerNo].bet, matchChips = players[1 - playerNo].bet;
 			game.logToPlayer(playerNo, `You bet ${currentBet}, add ${matchChips - currentBet} to match?`);
 			const choice = await game.requestToPlayer(playerNo, `[M]atch or [F]old`, { validateCb: (response) => {
 				const res = response.text.toLowerCase();
@@ -102,6 +135,17 @@ async function GameInstance(game) {
 				return response.ok(res);
 			}});
 			return choice;
+		};
+		const askUseSkill = async function(playerNo) {
+			game.logToPlayer(playerNo, 'Your skills', players[playerNo].skillCards);
+			const response = await game.requestToPlayer(playerNo, 'Use skill?');
+			didYouMean.threshold = null;
+			const skill = didYouMean(response, players[playerNo].skillCards);
+			await game.showNoticeToPlayer(playerNo, `You chose ${skill}`);
+		};
+		const askPlay = async function(playerNo) {
+			return await game.requestToPlayer(playerNo, )
+
 		};
 
 		// First player can fold, call or raise
@@ -121,19 +165,64 @@ async function GameInstance(game) {
 			}
 		}
 
-		// Choose a skill
+		// TODO Florian -- Limit to 3 rounds (hikiwake included)
+		let weHaveAWinner = false;
+		while (!weHaveAWinner) {
+			// Choose a skill (each player)
+			[p1.usedSkill, p2.usedSkill] = await Promise.all([askUseSkill(0), askUseSkill(1)]);
 
+			// Execute pre-skills
+			if (p1.usedSkill) {
+				// TODO Florian -- Does a countered skill use skill points?
+				const skill = ALL_SKILL_LIST[p1.usedSkill];
+				skill.preExecute(p1, p2);
+				p1.skillPoints -= skill.cost;
+			}
+			if (p2.usedSkill) {
+				// TODO Florian -- Does a countered skill use skill points?
+				const skill = ALL_SKILL_LIST[p2.usedSkill];
+				skill.preExecute(p2, p1);
+				p2.skillPoints -= skill.cost;
+			}
 
+			// Execute the actual skills (usedSkill has been set to null by skills which counter one player)
+			if (p1.usedSkill) skill.postExecute(p1, p2);
+			if (p2.usedSkill) skill.postExecute(p2, p1);
+
+			// Actual game…
+			[p1.play, p2.play] = await Promise.all([askPlay(0), askPlay(1)]);
+			game.logToEveryone(`P1 played ${p1.play}, P2 played ${p2.play}`);
+
+			switch (winnerOfRPS(p1.play, p2.play)) {
+			case 0: // P1
+				p1.shared.chips += p1.bet;
+				game.logToEveryone(`P1 won ${p1.bet} chips`);
+				game.logToPlayer(`P2 lost ${p2.bet} chips`);
+				game.showNoticeToEveryone('P1 won!');
+				weHaveAWinner = true;
+				break;
+			case 1: // P2
+				p2.shared.chips += p2.bet;
+				game.logToEveryone(`P1 lost ${p1.bet} chips`);
+				game.logToEveryone(`P2 won ${p2.bet} chips`);
+				game.showNoticeToEveryone('P2 won!');
+				weHaveAWinner = true;
+				break;
+			case -1: // Draw
+				game.showNoticeToEveryone('Hikiwake!');
+				break;
+			}
+		}
 	}
 
 
 
 
-	// while (p1.chips > 0 && p2.chips > 0) {
+	// while (p1.shared.chips > 0 && p2.shared.chips > 0) {
 	// 	const bets = [];
 	// 	const verifyBet = (response) => {
 	// 		const val = Math.floor(parseInt(response.text));
-	// 		if (val >= 1 && val <= player[response.playerNo].chips) {
+	// 		if (val >= 1 && val <= players[response.playerNo].shared.chips) {
 	// 			bets[response.playerNo] = val;
 	// 			return response.ok();
 	// 		}
@@ -146,8 +235,8 @@ async function GameInstance(game) {
 	// 	game.logToPlayer(0, `Your hand: ${p1.hand.desc()}`);
 	// 	game.logToPlayer(1, `Your hand: ${p2.hand.desc()}`);
 	// 	await inParallel(
-	// 		game.requestToPlayer(0, `Bet? [1..${p1.chips}]`, { validateCb: verifyBet }),
-	// 		game.requestToPlayer(1, `Bet? [1..${p2.chips}]`, { validateCb: verifyBet })
+	// 		game.requestToPlayer(0, `Bet? [1..${p1.shared.chips}]`, { validateCb: verifyBet }),
+	// 		game.requestToPlayer(1, `Bet? [1..${p2.shared.chips}]`, { validateCb: verifyBet })
 	// 	);
 
 	// 	let weHaveAWinner = false;
@@ -155,10 +244,10 @@ async function GameInstance(game) {
 	// 		const plays = [];
 	// 		const verifyPlay = (response) => {
 	// 			const played = response.text.toUpperCase();
-	// 			const handIndex = player[response.playerNo].hand.indexOf(played);
+	// 			const handIndex = players[response.playerNo].hand.indexOf(played);
 	// 			if (handIndex >= 0) {
 	// 				// Not usable anymore
-	// 				player[response.playerNo].hand.splice(handIndex, 1);
+	// 				players[response.playerNo].hand.splice(handIndex, 1);
 	// 				plays[response.playerNo] = played;
 	// 				return response.ok();
 	// 			}
@@ -173,16 +262,16 @@ async function GameInstance(game) {
 	// 		game.logToEveryone(`P1 played ${plays[0]}, P2 played ${plays[1]}`);
 	// 		switch (winnerOfRPS(plays[0], plays[1])) {
 	// 			case 0: // P1
-	// 				p1.chips += bets[0];
-	// 				p2.chips -= bets[1];
+	// 				p1.shared.chips += bets[0];
+	// 				p2.shared.chips -= bets[1];
 	// 				game.logToEveryone(`P1 won ${bets[0]} chips`);
 	// 				game.logToPlayer(`P2 lost ${bets[1]} chips`);
 	// 				game.showNoticeToEveryone('P1 won!');
 	// 				weHaveAWinner = true;
 	// 				break;
 	// 			case 1: // P2
-	// 				p1.chips -= bets[0];
-	// 				p2.chips += bets[1];
+	// 				p1.shared.chips -= bets[0];
+	// 				p2.shared.chips += bets[1];
 	// 				game.logToEveryone(`P1 lost ${bets[0]} chips`);
 	// 				game.logToEveryone(`P2 won ${bets[1]} chips`);
 	// 				game.showNoticeToEveryone('P2 won!');

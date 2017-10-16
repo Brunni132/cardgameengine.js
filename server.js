@@ -106,7 +106,7 @@ class RequestCommand extends Command {
 			if (this.validateCb) {
 				return this.validateCb(responseObj);
 			}
-			return responseObj.ok();
+			return responseObj.ok(responseObj.text);
 		}
 
 		// … or not and we serve the form
@@ -154,7 +154,7 @@ class GamePrivate {
 		if (this.findPlayerNo(playerName) >= 0) throw new Error(`Player ${playerName} already part of this game!`);
 		if (this.players.length >= this.requiredPlayers) throw new Error(`This game is already full! ${playerName} cannot join.`);
 		const playerNo = this.players.length;
-		const playerData = { name: playerName, 'static': this.engine.getPlayerUserData(playerName) };
+		const playerData = { name: playerName, 'shared': this.engine.getPlayerUserData(playerName) };
 		// gameData is the public namespace (non persisted) that appears on game.player[playerNo]. Contains a data member, persisted.
 		this.players.push({ playerName: playerName, waiting: false, pendingLogs: '', commands: [], gameData: playerData });
 		// All joined -> start the game

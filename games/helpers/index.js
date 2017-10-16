@@ -1,4 +1,4 @@
-exports.coinToss = () => randomInt(0, 2) === 0;
+exports.coinToss = () => exports.randomInt(0, 2);
 
 exports.inParallel = async function(...funs) {
 	return await Promise.all(funs);
