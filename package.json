@@ -2,7 +2,7 @@
   "name": "cardgameengine.js",
   "version": "1.0.0",
   "description": "Simple card game engine for JS, allowing to quickly prototype new kind of games",
-  "main": "index.js",
+  "main": "server.js",
   "dependencies": {
     "express": "^4.16.1",
     "filendir": "^1.0.0",
@@ -11,8 +11,7 @@
   },
   "devDependencies": {},
   "scripts": {
-    "server": "node index.js",
-    "registerUser": "node registerUser.js",
+    "server": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
