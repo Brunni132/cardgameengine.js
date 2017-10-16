@@ -27,38 +27,6 @@ async function GameInstance(game) {
 	const players = game.player;
 	const p1 = players[0], p2 = players[1];
 
-	const randomCard = () => randomInt(0, 3);
-	const ALL_SKILL_LIST = {
-		'nervesOfSteel': {
-			cost: 4,
-			preExecute: (mainPlayer, otherPlayer) => {
-				otherPlayer.usedSkill = null;
-			},
-			postExecute: (mainPlayer, otherPlayer) => {}
-		},
-		'replaceOneCardWithPa': {
-			cost: 3,
-			preExecute: (mainPlayer, otherPlayer) => {},
-			postExecute: (mainPlayer, otherPlayer) => {
-				mainPlayer.hand[randomCard()] = 'P';
-			}
-		},
-		'replaceOneCardWithChoki': {
-			cost: 3,
-			preExecute: (mainPlayer, otherPlayer) => {},
-			postExecute: (mainPlayer, otherPlayer) => {
-				mainPlayer.hand[randomCard()] = 'S';
-			}
-		},
-		'replaceOneCardWithGu': {
-			cost: 3,
-			preExecute: (mainPlayer, otherPlayer) => {},
-			postExecute: (mainPlayer, otherPlayer) => {
-				mainPlayer.hand[randomCard()] = 'R';
-			}
-		},
-	};
-
 	// Starting bet
 	game.logToPlayer(0, `Hello P1! You have ${p1.shared.chips} chips`);
 	game.logToPlayer(1, `Hello P2! You have ${p2.shared.chips} chips`);
@@ -75,6 +43,7 @@ async function GameInstance(game) {
 	p1.skillCards = Object.keys(ALL_SKILL_LIST);
 	p2.skillCards = Object.keys(ALL_SKILL_LIST);
 
+	// Round loop
 	while (true) {
 		p1.bet = p2.bet = 0;
 		p1.hand = generateRPSHand();
@@ -82,12 +51,56 @@ async function GameInstance(game) {
 		const bet = (playerNo, chips) => {
 			players[playerNo].shared.chips -= chips;
 			players[playerNo].bet += chips;
+			game.logToPlayer(playerNo, `Bet ${chips} bet`);
 		};
 		const fold = async function(playerNo) {
 			// TODO
 			return await game.showNoticeToPlayer(playerNo, 'You folded');
 		};
-
+		// All in for now (limit per room in the future)
+		const maxChips = (playerNo) => players[playerNo].shared.chips;
+		const randomCard = () => randomInt(0, 3);
+		const ALL_SKILL_LIST = {
+			'kakegurui': {
+				cost: 6,
+				preExecute: (mainPlayer, otherPlayer) => {},
+				postExecute: (mainPlayer, otherPlayer) => {
+					players.forEach((p, playerNo) => {
+						bet(playerNo, maxChips(playerNo));
+					});
+					await game.showNoticeToEveryone('Everyone is forced all-in!');
+				}
+			},
+			'nervesOfSteel': {
+				cost: 4,
+				preExecute: (mainPlayer, otherPlayer) => {
+					otherPlayer.usedSkill = null;
+				},
+				postExecute: (mainPlayer, otherPlayer) => {}
+			},
+			'replaceOneCardWithPa': {
+				cost: 3,
+				preExecute: (mainPlayer, otherPlayer) => {},
+				postExecute: (mainPlayer, otherPlayer) => {
+					mainPlayer.hand[randomCard()] = 'P';
+				}
+			},
+			'replaceOneCardWithChoki': {
+				cost: 3,
+				preExecute: (mainPlayer, otherPlayer) => {},
+				postExecute: (mainPlayer, otherPlayer) => {
+					mainPlayer.hand[randomCard()] = 'S';
+				}
+			},
+			'replaceOneCardWithGu': {
+				cost: 3,
+				preExecute: (mainPlayer, otherPlayer) => {},
+				postExecute: (mainPlayer, otherPlayer) => {
+					mainPlayer.hand[randomCard()] = 'R';
+				}
+			},
+		};
+	
 		// Coin toss to see who starts the round
 		const MINIMUM_BET = 1; // TODO based on room
 		let currentPlayer = coinToss();
@@ -103,9 +116,9 @@ async function GameInstance(game) {
 		const askToBet = async function(playerNo, question) {
 			game.logToPlayer(playerNo, 'In-game chips:');
 			game.logToPlayer(playerNo, `You=${players[playerNo].bet}, other=${players[1 - playerNo].bet}`);
-			return await game.requestToPlayer(playerNo, `${question}? [1…${players[playerNo].shared.chips}]`, { validateCb: (response) => {
+			return await game.requestToPlayer(playerNo, `${question}? [1…${maxChips(playerNo)}]`, { validateCb: (response) => {
 				const bet = Math.floor(parseInt(response.text));
-				if (bet >= 1 && bet <= players[response.playerNo].shared.chips) {
+				if (bet >= 1 && bet <= maxChips(playerNo)) {
 					return response.ok(bet);
 				}
 				return response.reject('Cannot bet that');
@@ -115,6 +128,10 @@ async function GameInstance(game) {
 			game.logToPlayer(playerNo, 'In-game chips:');
 			game.logToPlayer(playerNo, `You=${players[playerNo].bet}, other=${players[1 - playerNo].bet}`);
 			const choice = await game.requestToPlayer(playerNo, '[C]all, [R]aise or [F]old', { validateCb: (response) => {
+				if (!response.text) {
+					game.logToPlayer(playerNo, 'Defaulted to [C]all option');
+					response.text = 'c';
+				}
 				if (['c', 'r', 'f'].indexOf(response.text.toLowerCase()) >= 0)
 					return response.ok(response.text.toLowerCase());
 				return response.reject('Unsupported choice');
@@ -143,7 +160,7 @@ async function GameInstance(game) {
 			const response = await game.requestToPlayer(playerNo, 'Use skill?');
 			didYouMean.threshold = null;
 			const skill = didYouMean(response, players[playerNo].skillCards);
-			game.logToPlayer(playerNo, `You chose ${skill}`);
+			game.logToPlayer(playerNo, `Chose skill: ${skill || '(none)'}`);
 			return skill;
 		};
 		const askPlay = async function(playerNo) {
