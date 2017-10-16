@@ -176,22 +176,28 @@ async function GameInstance(game) {
 			}});
 		};
 
-		// First player can fold, call or raise
-		const choice = await askFoldCallOrRaise(currentPlayer);
-		if (choice === 'f') {
-			// TODO End of this round
-			await fold(currentPlayer);
-			continue;
+		// Until both have called
+		p1.called = p2.called = false;
+		while (!p1.called || !p2.called) {
+			// First player can fold, call or raise
+			const choice = await askFoldCallOrRaise(currentPlayer);
+			if (choice === 'f') {
+				// TODO End of this round
+				await fold(currentPlayer);
+				continue;
+			} else if (choice === 'r') {
+				// If the first player raised, the second can either match or fold
+				const choiceOther = await askMatchOrFold(1 - currentPlayer);
+				if (choiceOther === 'f') {
+					await fold(1 - currentPlayer);
+					continue;
+				}
+			} else if (choice === 'c') {
+				players[currentPlayer].called = true;
+			}
+			currentPlayer = 1 - currentPlayer;
 		}
 
-		// If the first player raised, the second can either match or fold
-		if (choice === 'r') {
-			const choiceOther = await askMatchOrFold(1 - currentPlayer);
-			if (choiceOther === 'f') {
-				await fold(1 - currentPlayer);
-				continue;
-			}
-		}
 
 		// TODO Florian -- Limit to 3 rounds (hikiwake included)
 		let weHaveAWinner = false;
